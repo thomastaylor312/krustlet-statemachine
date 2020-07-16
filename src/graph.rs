@@ -1,26 +1,35 @@
-use crate::handlers::*;
-use crate::machine::*;
+use std::sync::Arc;
 
 use petgraph::Graph;
+
+use crate::handlers::*;
+use crate::machine::*;
 
 const ERROR_FILLER: &str = "doesn'tmatter";
 
 pub struct KrustletGraph;
 
 impl KrustletGraph {
-    pub fn generate() -> Graph<Node, Edge> {
+    pub fn generate() -> Graph<Node<Pod>, Edge> {
+        let state = Arc::new(dashmap::DashMap::new());
         let mut graph = Graph::new();
         let node = graph.add_node(Node {
             name: "ImagePull".to_string(),
-            handler: Box::new(ImagePullHandler {}),
+            handler: Box::new(ImagePullHandler {
+                state: state.clone(),
+            }),
         });
         let success = graph.add_node(Node {
             name: "Volume".to_string(),
-            handler: Box::new(VolumeHandler {}),
+            handler: Box::new(VolumeHandler {
+                state: state.clone(),
+            }),
         });
         let err = graph.add_node(Node {
             name: "ImagePullError".to_string(),
-            handler: Box::new(ImagePullHandler {}),
+            handler: Box::new(ImagePullHandler {
+                state: state.clone(),
+            }),
         });
         graph.add_edge(node, success, Edge::Success);
         graph.add_edge(node, err, Edge::Failure(ERROR_FILLER.to_owned()));
@@ -30,11 +39,15 @@ impl KrustletGraph {
         let node = success;
         let success = graph.add_node(Node {
             name: "ContainerStart".to_string(),
-            handler: Box::new(ContainerStartHandler {}),
+            handler: Box::new(ContainerStartHandler {
+                state: state.clone(),
+            }),
         });
         let err = graph.add_node(Node {
             name: "VolumeError".to_string(),
-            handler: Box::new(VolumeErrorHandler {}),
+            handler: Box::new(VolumeErrorHandler {
+                state: state.clone(),
+            }),
         });
         graph.add_edge(node, success, Edge::Success);
         graph.add_edge(node, err, Edge::Failure(ERROR_FILLER.to_owned()));
@@ -44,11 +57,13 @@ impl KrustletGraph {
         let node = success;
         let success = graph.add_node(Node {
             name: "PodRunning".to_string(),
-            handler: Box::new(PodRunningHandler {}),
+            handler: Box::new(PodRunningHandler {
+                state: state.clone(),
+            }),
         });
         let err = graph.add_node(Node {
             name: "ContainerError".to_string(),
-            handler: Box::new(ContainerErrorHandler {}),
+            handler: Box::new(ContainerErrorHandler { state }),
         });
         graph.add_edge(node, success, Edge::Success);
         graph.add_edge(node, err, Edge::Failure(ERROR_FILLER.to_owned()));

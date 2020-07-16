@@ -12,22 +12,19 @@ pub enum Edge {
     Wait(Duration),
 }
 
-pub struct Node {
+pub struct Node<T> {
     pub name: String,
-    pub handler: Box<dyn StateHandler>,
+    pub handler: Box<dyn StateHandler<T>>,
 }
 
-impl fmt::Debug for Node {
+impl<T> fmt::Debug for Node<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Node").field("name", &self.name).finish()
     }
 }
 
-pub struct State {
-    // TODO: define needed state
+pub struct PodMachine<T> {
+    graph: Graph<Node<T>, Edge>,
 }
 
-pub struct PodMachine {
-    state: State, // Trying to make this non-mutable/not need a lock
-    graph: Graph<Node, Edge>,
-}
+// TODO: Construct PodMachine and add start method (with listening loop)
