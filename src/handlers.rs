@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use crate::machine::Edge;
 
 // Temporary filler pod
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Pod {
     pub name: String,
     pub namespace: String,
@@ -14,7 +14,7 @@ pub struct Pod {
 }
 
 pub trait StateHandler<T> {
-    fn handle(&self, pod: T) -> Edge;
+    fn handle(&self, pod: &T) -> Edge;
 }
 
 //
@@ -26,7 +26,12 @@ pub struct ImagePullHandler {
 }
 
 impl StateHandler<Pod> for ImagePullHandler {
-    fn handle(&self, pod: Pod) -> Edge {
+    fn handle(&self, pod: &Pod) -> Edge {
+        // Because this is the first node, we should make sure the pod exists. We maybe should have
+        // a specific start node to make this more clear
+        if !self.state.contains_key(&pod.name) {
+            self.state.insert(pod.name.clone(), Pod::default());
+        }
         if let Some(current_state) = self.state.get(&pod.name) {
             if current_state.image == pod.image {
                 println!("Image is already up to date");
@@ -57,7 +62,7 @@ pub struct ImagePullErrorHandler {
 }
 
 impl StateHandler<Pod> for ImagePullErrorHandler {
-    fn handle(&self, _pod: Pod) -> Edge {
+    fn handle(&self, _pod: &Pod) -> Edge {
         Edge::Success
     }
 }
@@ -67,7 +72,7 @@ pub struct VolumeHandler {
 }
 
 impl StateHandler<Pod> for VolumeHandler {
-    fn handle(&self, pod: Pod) -> Edge {
+    fn handle(&self, pod: &Pod) -> Edge {
         if let Some(current_state) = self.state.get(&pod.name) {
             if current_state.volumes == pod.volumes {
                 println!("Volumes are already up to date");
@@ -98,7 +103,7 @@ pub struct VolumeErrorHandler {
 }
 
 impl StateHandler<Pod> for VolumeErrorHandler {
-    fn handle(&self, _pod: Pod) -> Edge {
+    fn handle(&self, _pod: &Pod) -> Edge {
         Edge::Success
     }
 }
@@ -108,7 +113,7 @@ pub struct ContainerStartHandler {
 }
 
 impl StateHandler<Pod> for ContainerStartHandler {
-    fn handle(&self, _pod: Pod) -> Edge {
+    fn handle(&self, _pod: &Pod) -> Edge {
         Edge::Success
     }
 }
@@ -118,7 +123,7 @@ pub struct ContainerErrorHandler {
 }
 
 impl StateHandler<Pod> for ContainerErrorHandler {
-    fn handle(&self, _pod: Pod) -> Edge {
+    fn handle(&self, _pod: &Pod) -> Edge {
         Edge::Success
     }
 }
@@ -128,7 +133,7 @@ pub struct PodRunningHandler {
 }
 
 impl StateHandler<Pod> for PodRunningHandler {
-    fn handle(&self, _pod: Pod) -> Edge {
+    fn handle(&self, _pod: &Pod) -> Edge {
         Edge::Success
     }
 }

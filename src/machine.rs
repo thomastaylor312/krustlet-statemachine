@@ -1,7 +1,9 @@
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
-use petgraph::Graph;
+use petgraph::{graph::NodeIndex, visit::EdgeRef, Direction, Graph};
+use tokio::sync::mpsc::Receiver;
 
 use crate::handlers::StateHandler;
 
@@ -14,7 +16,7 @@ pub enum Edge {
 
 pub struct Node<T> {
     pub name: String,
-    pub handler: Box<dyn StateHandler<T>>,
+    pub handler: Box<dyn StateHandler<T> + Send + Sync>,
 }
 
 impl<T> fmt::Debug for Node<T> {
@@ -24,7 +26,48 @@ impl<T> fmt::Debug for Node<T> {
 }
 
 pub struct PodMachine<T> {
-    graph: Graph<Node<T>, Edge>,
+    graph: Arc<Graph<Node<T>, Edge>>,
+    pod_receiver: Receiver<T>,
 }
 
-// TODO: Construct PodMachine and add start method (with listening loop)
+impl<T: Send + Sync + 'static> PodMachine<T> {
+    pub fn new(graph: Graph<Node<T>, Edge>, pod_receiver: Receiver<T>) -> Self {
+        // TODO: Validate that the graph only has one start node (and grab the start index?)
+        PodMachine {
+            graph: Arc::new(graph),
+            pod_receiver,
+        }
+    }
+
+    pub async fn run(&mut self) -> anyhow::Result<()> {
+        while let Some(item) = self.pod_receiver.recv().await {
+            tokio::task::spawn(walk_graph(self.graph.clone(), item));
+        }
+        Ok(())
+    }
+}
+
+async fn walk_graph<T: Send + Sync + 'static>(graph: Arc<Graph<Node<T>, Edge>>, item: T) {
+    let mut current_index = NodeIndex::new(0);
+    let mut current_node = &graph[current_index];
+    // Get the sinks for checking if we are at the end of the graph
+    let sinks: Vec<NodeIndex> = graph.externals(Direction::Outgoing).collect();
+
+    // TODO: Maybe design a custom iterator that checks for the edge type and then points at the next one
+    loop {
+        // TODO: Add handling for Wait edge
+        let res = current_node.handler.handle(&item);
+        // Circuit breaker, checks if we've reached a sink
+        if sinks.iter().any(|idx| idx == &current_index) {
+            break;
+        }
+        // TODO: Handle case where returned edge doesn't exist
+        current_index = graph
+            .edges(current_index)
+            .find(|er| std::mem::discriminant(er.weight()) == std::mem::discriminant(&res))
+            .unwrap()
+            .target();
+        current_node = &graph[current_index]
+    }
+    println!("completed graph walk")
+}
